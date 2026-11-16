@@ -1,0 +1,46 @@
+{
+  "title": "Moonrizon landing: scegli la struttura",
+  "question": "Il mondo visivo è quello del brand kit in tutte e tre: cielo #12141e, creste di regolite, Sole ocra, Terra celeste, indaco solo per il tasto. Cambia come la pagina è costruita attorno al tasto \"Try Moonrizon\".",
+  "options": [
+    {
+      "id": "lunar-day",
+      "kind": "assigned",
+      "label": "One lunar day · lo scroll è il tempo",
+      "kicker": "THE ROLL",
+      "lineage": "scena Problem e Live horizon del video promo",
+      "thesis": "Scorri la pagina e passano 30 giorni al polo sud: Sole e Terra attraversano la cresta mentre la timeline in basso si riempie.",
+      "palette": ["#12141e", "#eceef4", "#2b2fa8", "#c2964a", "#8aa6d6"],
+      "materials": ["orizzonte SVG a tutta pagina", "timeline Sunlight / Earth / Both agganciata in basso", "letture mono che cambiano con lo scroll"],
+      "viewport": "Orizzonte a tutto schermo, titolo \"Before you land, look up.\" nel cielo a sinistra, tasto grande sotto, contatore \"day 4.2 of 30\" a destra, timeline fissa in fondo.",
+      "risk": "Chi non scorre vede una scena ferma: serve un piccolo movimento automatico all'arrivo.",
+      "html": ".impeccable/mocks/decision/lunar-day.html"
+    },
+    {
+      "id": "descent",
+      "kind": "dealt",
+      "label": "The descent · lo scroll è la quota",
+      "lineage": "scena Hook del video e discesa dal globo dell'app",
+      "thesis": "Si parte dall'orbita con la domanda del video e si scende a tappe fino a toccare il suolo, dove l'orizzonte e il tasto chiudono la pagina.",
+      "palette": ["#12141e", "#eceef4", "#2b2fa8", "#c2964a", "#8aa6d6"],
+      "materials": ["parole giganti che entrano a battuta", "lembo della Luna che sale", "scala di quota 100 km → 0 m sul bordo destro", "screenshot reali a ogni tappa"],
+      "viewport": "\"Landing on the Moon?\" enorme e centrato sopra il lembo lunare, tasto al centro, scala di quota a destra con quattro tappe.",
+      "risk": "Il prodotto vero si vede solo dopo il primo schermo; in cima c'è una promessa, non una prova.",
+      "html": ".impeccable/mocks/decision/descent.html"
+    },
+    {
+      "id": "drag-horizon",
+      "kind": "dealt",
+      "label": "The horizon in your hands · si prova subito",
+      "lineage": "finestra spaziale e card bianche dell'app, scena Live horizon del video",
+      "thesis": "Il primo schermo è già lo strumento: scegli un sito, trascina il tempo, leggi \"power, no link\"; il tasto apre quel sito nell'app.",
+      "palette": ["#eceef4", "#12141e", "#ffffff", "#2b2fa8", "#c2964a", "#8aa6d6"],
+      "materials": ["finestra spaziale arrotondata su fondo grigio", "orizzonte trascinabile con dati dimostrativi etichettati", "barra bianca con siti, cursore del tempo e tasto"],
+      "viewport": "Finestra scura larga quanto la pagina con \"Stand on the horizon.\" nel cielo e le letture a destra; sotto, una barra bianca con tre siti, il cursore del tempo e il tasto grande.",
+      "risk": "È la più vicina all'app: se la demo è troppo ricca toglie il motivo di premere il tasto.",
+      "html": ".impeccable/mocks/decision/drag-horizon.html"
+    }
+  ],
+  "reroll": true,
+  "buildPath": { "value": "code", "toggle": false },
+  "steer": true
+}

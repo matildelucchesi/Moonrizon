@@ -29,3 +29,9 @@ data/**
 !data/**/
 !data/**/.gitkeep
 !data/README.md
+
+# MP4 files
+*.mp4
+
+# WAV files
+*.wav

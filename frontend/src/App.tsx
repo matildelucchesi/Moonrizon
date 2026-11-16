@@ -58,6 +58,8 @@ function useKeyboard() {
 function useHashRoute() {
   useEffect(() => {
     const onHash = () => setState({ screen: screenFromHash(location.hash), playing: false })
+    // The app can mount after a hash change it never saw (coming back from the landing page).
+    if (getState().screen !== screenFromHash(location.hash)) onHash()
     window.addEventListener('popstate', onHash)
     window.addEventListener('hashchange', onHash)
     return () => {
