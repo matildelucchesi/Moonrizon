@@ -18,3 +18,8 @@ data
 **/.pytest_cache
 **/.ruff_cache
 **/*.log
+
+backend/data
+backend/cache
+pitch-video
+deploy

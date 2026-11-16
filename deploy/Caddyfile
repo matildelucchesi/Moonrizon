@@ -1,0 +1,22 @@
+# HTTPS automatico (Let's Encrypt) per il dominio dell'API, es. api.tuodominio.it
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	# Documentazione interattiva non necessaria in produzione pubblica.
+	@docs path /api/docs /api/openapi.json
+	respond @docs 404
+
+	# Le analisi del terreno possono richiedere minuti.
+	reverse_proxy backend:8000 {
+		transport http {
+			response_header_timeout 300s
+			read_timeout 300s
+		}
+	}
+}

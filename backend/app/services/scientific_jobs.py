@@ -1,10 +1,16 @@
-"""Persistent terrain jobs, one worker, immutable completed results and polling."""
+"""Persistent terrain jobs, a small worker pool, immutable completed results and polling.
+
+Several sites are calculated at once (the compare screen asks for up to four). Each
+worker takes the next job from one shared priority queue. Cached files are written
+atomically, and JPL Horizons requests still go one at a time through the collection lock.
+"""
 
 import hashlib
 import heapq
 import itertools
 import json
 import logging
+import os
 import re
 import threading
 import uuid
@@ -18,15 +24,24 @@ from .terrain.engine import VERSION, TerrainError, calculate
 LOG = logging.getLogger(__name__)
 
 
+def default_workers():
+    """MEOWRIZON_SCIENTIFIC_WORKERS, or 4: one per site on the compare screen."""
+    try:
+        return max(1, int(os.environ.get("MEOWRIZON_SCIENTIFIC_WORKERS", "4")))
+    except ValueError:
+        return 4
+
+
 class JobCancelled(Exception):
     pass
 
 
 class ScientificJobs:
-    def __init__(self, settings):
+    def __init__(self, settings, workers=None):
         self.root = settings.root
         self.directory = settings.jobs / "scientific"
-        self.executor = None
+        self.size = workers or default_workers()
+        self.workers = []
         self.lock = threading.RLock()
         self.condition = threading.Condition(self.lock)
         self.queue = []
@@ -49,8 +64,12 @@ class ScientificJobs:
                     },
                 }
                 _write_json(path, record)
-        self.executor = threading.Thread(target=self._work, name="scientific", daemon=True)
-        self.executor.start()
+        self.workers = [
+            threading.Thread(target=self._work, name=f"scientific-{n}", daemon=True)
+            for n in range(self.size)
+        ]
+        for worker in self.workers:
+            worker.start()
 
     def close(self):
         with self.condition:
@@ -58,8 +77,8 @@ class ScientificJobs:
             for record in self.live.values():
                 record["cancelled"] = True
             self.condition.notify_all()
-        if self.executor:
-            self.executor.join()
+        for worker in self.workers:
+            worker.join()
 
     def _enqueue(self, record, priority):
         heapq.heappush(self.queue, (priority, next(self.sequence), record))
@@ -109,7 +128,7 @@ class ScientificJobs:
                 },
             }
             self._save(record)
-            if self.executor is None:
+            if not self.workers:
                 raise RuntimeError("Scientific worker not started")
             self.pending[key] = identifier
             record.update(consumers={consumer}, cancelled=False, started=False)

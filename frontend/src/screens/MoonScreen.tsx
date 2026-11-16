@@ -458,7 +458,7 @@ function RankedSitesPanel({ ranked, onPick, onHorizon, infoSlot }: { ranked: Ran
         </span>
         <p className="ui-small ui-muted">
           {!progress ? 'Preparing the comparison…'
-            : measuring ? `${done} processed · ${total - done} remaining${progress.current ? ` · now measuring ${progress.current}` : ''}`
+            : measuring ? `${done} processed · ${total - done} remaining${progress.current.length ? ` · now measuring ${progress.current.join(', ')}` : ''}`
             : `All ${total} sites processed${progress.failed.length ? ` · ${progress.failed.length} could not be calculated` : ''}`}
         </p>
       </div>}
@@ -533,7 +533,7 @@ function RankedSitesPanel({ ranked, onPick, onHorizon, infoSlot }: { ranked: Ran
             pending.map(p => (
               <li key={p.id} className="rank-card is-pending">
                 <span className="rank-badge" />
-                <span className="ui-muted ui-small">{p.name} · {p.name === progress.current ? 'Measuring…' : 'Pending'}</span>
+                <span className="ui-muted ui-small">{p.name} · {progress.current.includes(p.name) ? 'Measuring…' : 'Pending'}</span>
               </li>
             ))}
         </ol>

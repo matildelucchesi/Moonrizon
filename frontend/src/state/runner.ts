@@ -181,10 +181,13 @@ let rankingController: AbortController | null = null
 
 /**
  * Measures all catalog sites and region centres for scenario A's period with the engine
- * (terrain horizon, then Sun and Earth visibility), one region at a time, so
- * the results screen can rank them best to worst. The engine runs one job at
- * a time and keeps finished ones, so a second visit is immediate.
+ * (terrain horizon, then Sun and Earth visibility), four regions at a time, so
+ * the results screen can rank them best to worst. The engine keeps finished
+ * jobs, so a second visit is immediate.
  */
+/** Sites measured at once: matches MEOWRIZON_SCIENTIFIC_WORKERS and stays under the background queue limit (8). */
+const RANKING_PARALLEL = 4
+
 export async function runRegionRanking(force = false): Promise<void> {
   if (provider.kind !== 'api') return // Practice data already carries its measurements.
   const s = getState()
@@ -192,7 +195,7 @@ export async function runRegionRanking(force = false): Promise<void> {
   const { locations, minSunFraction, key } = rankingRequest(s)
   if (!locations.length) {
     rankingController?.abort()
-    setState({ ranking: { key, busy: false, total: 0, regions: [], failed: [], skipped: [], current: null } })
+    setState({ ranking: { key, busy: false, total: 0, regions: [], failed: [], skipped: [], current: [] } })
     return
   }
   const A = s.scenarios.A.input
@@ -208,16 +211,23 @@ export async function runRegionRanking(force = false): Promise<void> {
     const now = getState().ranking
     if (!signal.aborted && now?.key === key) setState({ ranking: { ...now, ...patch } })
   }
-  setState({ ranking: { key, busy: true, total: locations.length, regions: [], failed: [], skipped: [], current: locations[0].name } })
+  setState({ ranking: { key, busy: true, total: locations.length, regions: [], failed: [], skipped: [], current: [] } })
 
-  for (const loc of locations) {
-    if (signal.aborted) return
-    update({ current: loc.name, message: 'Checking terrain' })
+  // Results arrive out of order: keep every list in catalog order.
+  const order = new Map(locations.map((loc, i) => [loc.id, i]))
+  const add = <T extends { id: string }>(list: T[] | undefined, item: T): T[] =>
+    [...(list ?? []), item].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+  const measuring = (name: string, on: boolean) => {
+    const now = getState().ranking?.current ?? []
+    update({ current: on ? [...now, name] : now.filter((n) => n !== name) })
+  }
+
+  const measure = async (loc: (typeof locations)[number]): Promise<void> => {
     try {
       const terrain = await runJob(
         () => provider.submitTerrainAnalysis({ priority: 'background', site: loc.center, observerHeightM: A.observerHeightM, includeLocalTerrain: true, config: { azimuthStepDeg: s.azimuthStepDeg, maxDistanceKm: s.maxDistanceKm } }, signal),
         (id) => provider.getTerrainAnalysis(id, signal),
-        (job) => update({ message: job.message ?? 'Checking terrain' }),
+        (job) => update({ message: `${loc.name}: ${job.message ?? 'Checking terrain'}` }),
         signal,
       )
       const terrainProblem = terrainIssue(terrain)
@@ -225,7 +235,7 @@ export async function runRegionRanking(force = false): Promise<void> {
       const evaluation = await runJob(
         () => catalogApi.submitRankingEvaluation({ terrainAnalysisId: terrain.id, startUtc: new Date(start).toISOString(), stopUtc: new Date(stop).toISOString(), stepMinutes: s.stepMinutes, minSunFraction }, signal),
         (id) => catalogApi.getRankingEvaluation(id, signal),
-        (job) => update({ message: job.message ?? 'Checking sunlight and visibility' }),
+        (job) => update({ message: `${loc.name}: ${job.message ?? 'Checking sunlight and visibility'}` }),
         signal,
       )
       if ('skipped' in evaluation) {
@@ -235,15 +245,15 @@ export async function runRegionRanking(force = false): Promise<void> {
           || evaluation.sunFractionUpperBound < 0 || evaluation.sunFractionUpperBound >= minSunFraction) {
           throw new Error('The sunlight screening result does not match the requested comparison.')
         }
-        update({ skipped: [...(getState().ranking?.skipped ?? []), { id: loc.id, name: loc.name, center: loc.center, sunFractionUpperBound: evaluation.sunFractionUpperBound }] })
-        continue
+        update({ skipped: add(getState().ranking?.skipped, { id: loc.id, name: loc.name, center: loc.center, sunFractionUpperBound: evaluation.sunFractionUpperBound }) })
+        return
       }
       const scenarioProblem = scenarioIssue(evaluation, terrain.id, start, stop, s.stepMinutes * 60_000)
       if (scenarioProblem) throw new Error(scenarioProblem)
       const m = summarize(evaluation, start, stop)
       if (m.sun < minSunFraction) {
-        update({ skipped: [...(getState().ranking?.skipped ?? []), { id: loc.id, name: loc.name, center: loc.center, sunFractionUpperBound: m.sun }] })
-        continue
+        update({ skipped: add(getState().ranking?.skipped, { id: loc.id, name: loc.name, center: loc.center, sunFractionUpperBound: m.sun }) })
+        return
       }
       const region: Region = {
         id: loc.id, name: loc.name, area: loc.area, center: loc.center, pointKind: loc.pointKind,
@@ -258,13 +268,29 @@ export async function runRegionRanking(force = false): Promise<void> {
         powerSeries: evaluation.sun.visibleFraction && evaluation.sun.distanceKm ? { timesMs: evaluation.timesMs, visibleFraction: evaluation.sun.visibleFraction, distanceKm: evaluation.sun.distanceKm } : undefined,
         provenance: { terrainId: terrain.id, evaluationId: evaluation.id, startMs: start, stopMs: stop, ephemeris: evaluation.ephemeris.source, productIds: terrain.profile.dem.productIds },
       }
-      update({ regions: [...(getState().ranking?.regions ?? []), region] })
+      update({ regions: add(getState().ranking?.regions, region) })
     } catch (err) {
       if (signal.aborted) return
-      update({ failed: [...(getState().ranking?.failed ?? []), { id: loc.id, name: loc.name, center: loc.center, reason: describe(err) }] })
+      update({ failed: add(getState().ranking?.failed, { id: loc.id, name: loc.name, center: loc.center, reason: describe(err) }) })
     }
   }
-  update({ busy: false, current: null, message: null })
+
+  // Four sites at a time, the engine's worker count; each lane takes the next free site.
+  let next = 0
+  const lane = async () => {
+    while (next < locations.length && !signal.aborted) {
+      const loc = locations[next++]
+      measuring(loc.name, true)
+      try {
+        await measure(loc)
+      } finally {
+        measuring(loc.name, false)
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(RANKING_PARALLEL, locations.length) }, lane))
+  if (signal.aborted) return
+  update({ busy: false, current: [], message: null })
 }
 
 // Catalog requests retry on their own while the backend restarts (api/retry.ts);

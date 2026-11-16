@@ -1,0 +1,7 @@
+# Cloudflare Pages: cache lunga per gli asset con hash e per Cesium.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/cesium/*
+  Cache-Control: public, max-age=604800
+/landing/*
+  Cache-Control: public, max-age=604800

@@ -103,6 +103,8 @@ def scenario(tmp_path, monkeypatch):
 
 @pytest.fixture
 def api(monkeypatch):
+    # Queue order, limits and cancellation are easiest to pin down with one worker.
+    monkeypatch.setenv("MEOWRIZON_SCIENTIFIC_WORKERS", "1")
     with temporary_directory() as root:
         settings = Settings(root)
         result = {"id": "fixture-terrain", "origin": "engine", "profile": deepcopy(FLAT)}

@@ -50,8 +50,8 @@ export interface RegionRanking {
   failed: { id: string; name: string; reason: string; center: SiteCoordinates }[]
   /** Valid points rejected by the minimum sunlight requirement, not data failures. */
   skipped: { id: string; name: string; sunFractionUpperBound: number; center: SiteCoordinates }[]
-  /** Name of the region being measured now. */
-  current: string | null
+  /** Names of the regions being measured now (several at once). */
+  current: string[]
   /** Current engine stage, including the early sunlight screen. */
   message?: string | null
 }

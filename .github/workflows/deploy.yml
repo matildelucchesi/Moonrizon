@@ -1,0 +1,29 @@
+name: Deploy
+
+# Frontend: build e pubblicazione su Cloudflare Pages ad ogni push su main.
+# Backend: si aggiorna sul server con deploy/update.sh (vedi deploy/README.md).
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", "package*.json", ".github/workflows/deploy.yml"]
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build --workspace @meowrizon/frontend
+        env:
+          VITE_DATA_SOURCE: api
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/dist --project-name=${{ vars.CF_PAGES_PROJECT }} --branch=main

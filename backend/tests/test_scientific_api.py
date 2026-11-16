@@ -4,7 +4,7 @@ import json
 import time
 import unittest
 from copy import deepcopy
-from threading import Event
+from threading import Barrier, Event
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -41,6 +41,8 @@ class ScientificApiTests(unittest.TestCase):
         self.calculate = self.enterContext(
             patch("app.services.scientific_jobs.calculate", return_value=self.result)
         )
+        # Queue order and cancellation are easiest to pin down with one worker.
+        self.enterContext(patch.dict("os.environ", {"MEOWRIZON_SCIENTIFIC_WORKERS": "1"}))
         self.client = self.enterContext(TestClient(create_app(self.settings)))
 
     def wait_job(self, route, identifier):
@@ -155,6 +157,32 @@ class ScientificApiTests(unittest.TestCase):
                 (self.settings.jobs / "scientific" / f"{second['id']}.json").read_text()
             )
             self.assertEqual(service.submit("terrain", saved["parameters"]), completed)
+        finally:
+            service.close()
+
+    def test_several_sites_are_calculated_at_the_same_time(self):
+        # Each job waits until the other has started: one worker alone would time out.
+        both = Barrier(2, timeout=5)
+
+        def calculate(root, parameters, progress):
+            both.wait()
+            return {**self.result, "id": f"site-{parameters['site']['latDeg']}"}
+
+        self.calculate.side_effect = calculate
+        service = ScientificJobs(self.settings, workers=2)
+        service.start()
+        try:
+            jobs = [
+                service.submit("terrain", {**TERRAIN, "site": {"latDeg": lat, "lonEastDeg": 0}})
+                for lat in (-89.0, -88.0)
+            ]
+            for job in jobs:
+                for _ in range(500):
+                    done = service.get("terrain", job["id"])
+                    if done["status"] in {"completed", "failed"}:
+                        break
+                    time.sleep(0.01)
+                self.assertEqual(done["status"], "completed")
         finally:
             service.close()
 
