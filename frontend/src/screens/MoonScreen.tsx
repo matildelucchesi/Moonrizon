@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom'
 import { provider } from '../api'
 import { formatLat, formatLon, formatUtcDate, formatUtcLong } from '../domain/format'
 import { areaOfLatitude, comparisonCandidates } from '../domain/catalogs'
+import { formatRankingEta } from '../domain/rankingEta'
 import { rankingRequest } from '../domain/rankingRequest'
 import { assessRegions, publicExplanation, rank, rankColor, type AreaFilter, type Ranked } from '../domain/ranking'
 import { ExperimentCard } from '../features/Experiment'
@@ -20,7 +21,7 @@ import { CUSTOM_SITE_NAME, normalizeLon, validateSite } from '../domain/sites'
 import type { GlobeFocus, GlobeMarker, MarkerSymbol, RegionBands, RegionShape } from '../features/MoonGlobe'
 import { TopBar } from '../features/TopBar'
 import { loadRegionCatalog, loadSiteCatalog, runRegionRanking } from '../state/runner'
-import { clearPoint, getState, goTo, reopenAttempt, setScenarioInput, setState, useStore, type Audience, type ScenarioInput } from '../state/store'
+import { clearPoint, getState, goTo, reopenAttempt, setScenarioInput, setState, useStore, type Audience, type RankingStage, type ScenarioInput } from '../state/store'
 import { ArrowIcon, Button, Card, DateDial, Field, Input, MonthCalendar, Segmented, Select, SpaceWindow, Toggle } from '../ui'
 
 const MoonGlobe = lazy(() => import('../features/MoonGlobe'))
@@ -408,10 +409,25 @@ function ResultsWhen() {
   )
 }
 
+/** One right-aligned percentage of a ranked row; the long label is read by screen readers only. */
+function RankNum({ label, value }: { label: string; value: number }) {
+  const text = pct(value)
+  return (
+    <span className={text === '0%' ? 'rank-n is-zero' : 'rank-n'}>
+      <span className="sr-only">{label} </span>
+      {text}
+    </span>
+  )
+}
+
+/** The measuring step of a site, in the words of the two jobs behind it. */
+const STAGE_TEXT: Record<RankingStage, string> = { terrain: 'Terrain', visibility: 'Sun and Earth' }
+
 /**
- * Step 2: every candidate site for the chosen period, one card each, from the
- * best to the worst. With the engine the regions are measured one at a time:
- * cards join the list in their place as each result arrives.
+ * Step 2: every candidate site for the chosen period on one rail, from the
+ * best to the worst: ranked rows, then the sites being measured, then the queue.
+ * With the engine the regions are measured four at a time: a row joins the ranked
+ * zone in its place as each result arrives.
  */
 function RankedSitesPanel({ ranked, onPick, onHorizon, infoSlot }: { ranked: Ranked[]; onPick: Pick; onHorizon: () => void; infoSlot: HTMLElement | null }) {
   const audience = useStore((s) => s.audience)
@@ -440,6 +456,14 @@ function RankedSitesPanel({ ranked, onPick, onHorizon, infoSlot }: { ranked: Ran
   const completed = new Set([...(progress?.regions ?? []), ...(progress?.failed ?? []), ...(progress?.skipped ?? [])].map(p => p.id))
   const pending = comparisonCandidates(catalog, sites).filter(p => !completed.has(p.id) && (area === 'all' || p.area === area))
   const total = progress?.total ?? pending.length
+  const measuringSites = measuring && progress ? pending.filter(p => progress.current.includes(p.name)) : []
+  const queuedSites = measuring && progress ? pending.filter(p => !progress.current.includes(p.name)) : []
+  const measuringCount = Math.min(progress?.current.length ?? 0, Math.max(0, total - done))
+  const queuedCount = Math.max(0, total - done - measuringCount)
+  // The estimate comes from the runner and changes only when a site finishes.
+  const eta = measuring && progress ? formatRankingEta(progress.etaMs) : ''
+  // Rows already ranked when the panel opens do not fade in; only the ones that arrive later.
+  const [firstIds] = useState(() => new Set(shown.map(r => r.id)))
   // The horizon opens only for a site whose card was clicked in this list.
   const [cardId, setCardId] = useState<string | null>(null)
   const canOpen = planner ? !!chosen && chosen.id === cardId : pointShown
@@ -450,17 +474,26 @@ function RankedSitesPanel({ ranked, onPick, onHorizon, infoSlot }: { ranked: Ran
       <div className="rank-scroll">
       {API && <div className="ui-card rank-loader" role="status" aria-live="polite">
         <div className="rank-loader-head">
-          <span className="ui-field-label">{measuring ? 'Evaluating sites…' : 'Evaluation complete'}</span>
-          <span className="mono">{done} / {total}</span>
+          <span className="rank-loader-title">{measuring ? 'Evaluating sites' : 'Evaluation complete'}</span>
+          {eta && <span className="rank-eta">{eta}</span>}
         </div>
-        <span className="rank-progress-bar" aria-hidden="true">
-          <span style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
-        </span>
-        <p className="ui-small ui-muted">
-          {!progress ? 'Preparing the comparison…'
-            : measuring ? `${done} processed · ${total - done} remaining${progress.current.length ? ` · now measuring ${progress.current.join(', ')}` : ''}`
-            : `All ${total} sites processed${progress.failed.length ? ` · ${progress.failed.length} could not be calculated` : ''}`}
-        </p>
+        {!progress ? <p className="ui-small ui-muted">Preparing the comparison…</p> : <>
+          <div className="rank-seg" aria-hidden="true">
+            {Array.from({ length: Math.min(done, total) }, (_, i) => <i key={`d${i}`} className="is-done" />)}
+            {measuringCount > 0 && (
+              <span className="rank-seg-run" style={{ flexGrow: measuringCount }}>
+                {Array.from({ length: measuringCount }, (_, i) => <i key={i} />)}
+              </span>
+            )}
+            {Array.from({ length: queuedCount }, (_, i) => <i key={`q${i}`} />)}
+          </div>
+          <div className="rank-legend">
+            <span><i className="is-done" aria-hidden="true" /><b>{done}</b> evaluated</span>
+            <span><i className="is-run" aria-hidden="true" /><b>{measuringCount}</b> measuring</span>
+            <span><i aria-hidden="true" /><b>{queuedCount}</b> in queue</span>
+          </div>
+          {!measuring && <p className="ui-small ui-muted">All {total} sites processed{progress.failed.length ? ` · ${progress.failed.length} could not be calculated` : ''}</p>}
+        </>}
       </div>}
       <RankInfo slot={infoSlot}>
           <p><strong>{catalog?.origin === 'demo' ? 'Mission trade study · practice data' : 'Mission trade study'}</strong> · requirements first, then Pareto groups.</p>
@@ -482,60 +515,72 @@ function RankedSitesPanel({ ranked, onPick, onHorizon, infoSlot }: { ranked: Ran
       ) : shown.length === 0 && !measuring ? (
         <p className="ui-muted">No evaluated candidates meet all configured requirements in this area. Try a different date or duration.</p>
       ) : (
-        <ol className="rank-list" aria-label="Ranking">
-          {shown.map((r) => (
-            <li key={r.id} className="rank-item">
-              <button type="button" className={r.rank === 1 ? 'rank-card is-best' : 'rank-card'} aria-pressed={isChosen(input, r)} onClick={() => { setCardId(r.id); onPick({ ...r.center, name: r.name, id: r.id }) }}>
-                <span className="rank-card-head">
-                  <span className="rank-badge">
-                    {r.rank}
-                  </span>
-                  <span className="rank-card-name">{r.name.split(' · ')[0]}</span>
-                </span>
-                <span className={`results-metrics is-${audience}`}>
-                  <span className="ui-metric is-sun">
-                    <span className="ui-metric-label">Sunlight</span>
-                    <b className="ui-metric-value">{pct(r.sunFraction)}</b>
-                  </span>
-                  <span className="ui-metric is-earth">
-                    <span className="ui-metric-label">{student ? 'Earth in the sky' : 'Earth in view'}</span>
-                    <b className="ui-metric-value">{pct(r.earthFraction)}</b>
-                  </span>
-                  <span className="ui-metric">
-                    <span className="ui-metric-label">{student ? 'Both together' : 'Sun + Earth'}</span>
-                    <b className="ui-metric-value">{pct(r.bothFraction)}</b>
-                  </span>
-                  {planner && (
-                    <span className="ui-metric">
-                      <span className="ui-metric-label">{API ? 'Longest below C3' : 'Longest night'}</span>
-                      <b className="ui-metric-value">{nightText(r.longestNightH, audience)}</b>
+        <ol className="rank-board" aria-label="Ranking">
+          {shown.length > 0 && (
+            <li className="rank-zone" role="presentation">
+              <span />
+              <div className="rank-cols">
+                <span className="rank-zone-title">Ranked<span>{shown.length}</span></span>
+                <span className="is-sun" aria-hidden="true">Sun</span>
+                <span className="is-earth" aria-hidden="true">Earth</span>
+                <span aria-hidden="true">Both</span>
+              </div>
+            </li>
+          )}
+          {shown.map((r) => {
+            const selected = isChosen(input, r)
+            const unknown = (h: number | undefined) => (h === undefined ? 'Unknown' : nightText(h, audience))
+            return (
+              <li key={r.id} className={firstIds.has(r.id) ? 'rank-line' : 'rank-line is-new'}>
+                <span className={selected ? 'rank-node is-done is-on' : 'rank-node is-done'}>{r.rank}</span>
+                <button type="button" className={selected ? 'rank-row is-on' : 'rank-row'} aria-pressed={selected} onClick={() => { setCardId(r.id); onPick({ ...r.center, name: r.name, id: r.id }) }}>
+                  <span className="rank-name">{r.name.split(' · ')[0]}</span>
+                  <RankNum label="Sunlight" value={r.sunFraction} />
+                  <RankNum label={student ? 'Earth in the sky' : 'Earth in view'} value={r.earthFraction} />
+                  <RankNum label={student ? 'Both together' : 'Sun + Earth'} value={r.bothFraction} />
+                  {selected && <>
+                    <span className="rank-more">
+                      {planner
+                        ? <span>{API ? 'Longest below C3' : 'Longest night'} <b>{nightText(r.longestNightH, audience)}</b></span>
+                        : API && <span>Longest sunlight outage <b>{nightText(r.longestNightH, audience)}</b></span>}
+                      {API && <span>Longest radio outage <b>{unknown(r.longestNoLinkH)}</b></span>}
+                      {API && <span>Longest shared window <b>{unknown(r.longestBothH)}</b></span>}
                     </span>
-                  )}
-                </span>
-              </button>
-              <details className="rank-site-info">
-                <summary aria-label={`Details about ${r.name.split(' · ')[0]}`}><Info size={20} strokeWidth={1.75} aria-hidden="true" /></summary>
-                <div className="rank-site-info-body ui-card ui-small">
-                <strong>{r.name.split(' · ')[0]}</strong>
-                {isChosen(input, r) && <span>Your selected site</span>}
-                {API && <span className="ui-small ui-muted">
-                  Longest sunlight outage: {nightText(r.longestNightH, audience)} · Longest radio outage: {r.longestNoLinkH === undefined ? 'Unknown' : nightText(r.longestNoLinkH, audience)} · Longest shared window: {r.longestBothH === undefined ? 'Unknown' : nightText(r.longestBothH, audience)}
-                </span>}
-                {API && <span className="ui-small ui-muted">{r.pointKind === 'region-center' ? 'Region centre · point estimate' : 'Catalog site'}</span>}
-                {!planner && <span className="ui-small">{publicExplanation(r)}</span>}
-                <span className="ui-small ui-muted">Visibility index: {r.score.toFixed(1)}/100 · Configured requirements met</span>
-                </div>
-              </details>
+                    {API && <span className="rank-note">{r.pointKind === 'region-center' ? 'Region centre · point estimate' : 'Catalog site'}</span>}
+                    {!planner && <span className="rank-note">{publicExplanation(r)}</span>}
+                    <span className="rank-note">Visibility index: {r.score.toFixed(1)}/100 · Configured requirements met</span>
+                  </>}
+                </button>
+              </li>
+            )
+          })}
+          {measuringSites.length > 0 && progress && (
+            <li className="rank-zone" role="presentation">
+              <span />
+              <div className="rank-cols"><span className="rank-zone-title">Measuring now<span>{measuringSites.length}</span></span></div>
+            </li>
+          )}
+          {progress && measuringSites.map(p => (
+            <li key={`measuring:${p.id}`} className="rank-line">
+              <span className="rank-node is-run"><span className="ui-pulse" aria-hidden="true" /></span>
+              <div className="rank-run">
+                <span className="rank-run-name">{p.name}</span>
+                {progress.stages[p.id] && <span className="rank-run-step">{STAGE_TEXT[progress.stages[p.id]]}</span>}
+              </div>
             </li>
           ))}
-          {measuring &&
-            progress &&
-            pending.map(p => (
-              <li key={p.id} className="rank-card is-pending">
-                <span className="rank-badge" />
-                <span className="ui-muted ui-small">{p.name} · {progress.current.includes(p.name) ? 'Measuring…' : 'Pending'}</span>
-              </li>
-            ))}
+          {queuedSites.length > 0 && (
+            <li className="rank-zone" role="presentation">
+              <span />
+              <div className="rank-cols"><span className="rank-zone-title">In queue<span>{queuedSites.length}</span></span></div>
+            </li>
+          )}
+          {queuedSites.map((p, i) => (
+            <li key={`queued:${p.id}`} className={i ? 'rank-line is-tight' : 'rank-line'}>
+              <span className="rank-node is-queue"><span className="rank-hollow" aria-hidden="true" /></span>
+              <div className="rank-wait">{p.name}</div>
+            </li>
+          ))}
         </ol>
       )}
 

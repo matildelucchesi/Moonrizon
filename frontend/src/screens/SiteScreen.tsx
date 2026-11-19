@@ -1,10 +1,11 @@
 /**
  * Step 4: the view from the site, then the evidence grouped by question.
- * One 12-column grid; cards in a row share their height. Every card builds
- * itself with tiles while its data is computed.
+ * One 12-column grid; cards in a row share their height. Every card is on the
+ * page from the first frame, with its title, and its content arrives when the
+ * calculation it depends on has finished.
  */
 import { Columns2, Maximize2, Minimize2, Orbit, X } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { formatLat, formatLon, formatUtcLong } from '../domain/format'
 import { CUSTOM_SITE_NAME } from '../domain/sites'
 import { PublicAssessment } from '../features/PublicAssessment'
@@ -15,23 +16,29 @@ import { EclipseStrip, NextEclipseCard } from '../features/EclipseCards'
 import { HorizonScene } from '../features/HorizonScene'
 import { OrbitView } from '../features/OrbitView'
 import { DataPanel, MonthPanel, NowPanel, PeriodPanel, PromptsPanel } from '../features/Report'
+import { RunSteps, STEPS_DONE } from '../features/RunSteps'
 import { Timeline } from '../features/Timeline'
 import { TopBar } from '../features/TopBar'
 import { runScenario } from '../state/runner'
-import { goTo, useStore, type Audience, type RunPhase } from '../state/store'
-import { BackLink, Building, Button, Notice, SpaceWindow } from '../ui'
+import { goTo, useStore, type Audience, type RunPhase, type ScenarioRun } from '../state/store'
+import { BackLink, Button, Notice, Pending, SpaceWindow } from '../ui'
 
 const ICON = { size: 20, strokeWidth: 1.75, 'aria-hidden': true } as const
 
-/** One progress value across both steps of the calculation. */
-function overall(phase: RunPhase, progress = 0): number {
-  if (phase === 'terrain') return progress * 0.6
-  if (phase === 'ephemeris') return 0.6 + progress * 0.4
-  return 1
+/** What the engine is doing, in plain words, for when it has sent no message yet. */
+function phaseText(phase: RunPhase): string {
+  if (phase === 'ready') return 'Comparing with the month before…'
+  return phase === 'ephemeris' ? 'Tracking the Sun and Earth…' : 'Tracing the hills around the site…'
 }
 
-function phaseText(phase: RunPhase): string {
-  return phase === 'ephemeris' ? 'Tracking the Sun and Earth…' : 'Tracing the hills around the site…'
+/**
+ * Which of the three jobs is running: the terrain, the Sun and Earth, then the
+ * period before (which starts once the page is usable). STEPS_DONE when none is.
+ */
+function stepOf(run: ScenarioRun): number {
+  if (run.phase === 'idle' || run.phase === 'terrain') return 0
+  if (run.phase === 'ephemeris') return 1
+  return run.phase === 'ready' && run.previousState === 'pending' ? 2 : STEPS_DONE
 }
 
 type Span = 3 | 4 | 6 | 8 | 12
@@ -40,8 +47,10 @@ interface Cell {
   key: string
   span: Span
   node: ReactNode
+  /** The card's own title, shown while it waits for its data. */
+  title: string
   /** Height to hold while the card waits for its data. */
-  rest?: number
+  rest: number
 }
 
 interface Section {
@@ -54,24 +63,24 @@ interface Section {
 function sectionsFor(audience: Audience): Section[] {
   if (audience === 'public') {
     return [{ key: 'why', title: 'Right now and over the month', cells: [
-      { key: 'result', span: 4, node: <Scorecard /> },
-      { key: 'calendar', span: 4, node: <LightCalendarCard audience="public" /> },
-      { key: 'characteristics', span: 4, node: <MonthPanel /> },
+      { key: 'result', span: 4, title: 'Your result', rest: 320, node: <Scorecard /> },
+      { key: 'calendar', span: 4, title: 'Light calendar', rest: 320, node: <LightCalendarCard audience="public" /> },
+      { key: 'characteristics', span: 4, title: 'The selected period in numbers', rest: 320, node: <MonthPanel /> },
     ] }]
   }
 
   if (audience === 'educator') {
     return [
       { key: 'explain', title: 'Why is this site more or less favorable?', cells: [
-        { key: 'assessment', span: 12, node: <PublicAssessment /> },
-        { key: 'comparison', span: 12, node: <CompareCard audience="educator" />, rest: 480 },
-        { key: 'numbers', span: 6, node: <MonthPanel /> },
-        { key: 'prompts', span: 6, node: <PromptsPanel /> },
+        { key: 'assessment', span: 12, title: 'Why this site?', rest: 240, node: <PublicAssessment /> },
+        { key: 'comparison', span: 12, title: 'Compared with the best sites', rest: 480, node: <CompareCard audience="educator" /> },
+        { key: 'numbers', span: 6, title: 'The selected period in numbers', rest: 320, node: <MonthPanel /> },
+        { key: 'prompts', span: 6, title: 'For the class', rest: 320, node: <PromptsPanel /> },
       ] },
       { key: 'demonstrate', title: 'Demonstrate how conditions change', cells: [
-        { key: 'calendar', span: 12, node: <LightCalendarCard audience="educator" /> },
-        { key: 'windows', span: 12, node: <WindowsCard audience="educator" /> },
-        { key: 'eclipses', span: 12, node: <EclipseStrip audience="educator" /> },
+        { key: 'calendar', span: 12, title: 'Light calendar', rest: 320, node: <LightCalendarCard audience="educator" /> },
+        { key: 'windows', span: 12, title: 'Best windows to land', rest: 240, node: <WindowsCard audience="educator" /> },
+        { key: 'eclipses', span: 12, title: 'Eclipses from this site', rest: 240, node: <EclipseStrip audience="educator" /> },
       ] },
     ]
   }
@@ -82,26 +91,26 @@ function sectionsFor(audience: Audience): Section[] {
       title: 'Decision',
       cells: [
         // The comparison first; the period table after it, across the whole row.
-        { key: 'cmp', span: 12, node: <CompareCard audience="planner" />, rest: 480 },
-        { key: 'period', span: 12, node: <PeriodPanel />, rest: 480 },
-        { key: 'win', span: 12, node: <WindowsCard audience="planner" />, rest: 240 },
+        { key: 'cmp', span: 12, title: 'Compared with the best sites', rest: 480, node: <CompareCard audience="planner" /> },
+        { key: 'period', span: 12, title: 'This period', rest: 480, node: <PeriodPanel /> },
+        { key: 'win', span: 12, title: 'Best windows to land', rest: 240, node: <WindowsCard audience="planner" /> },
       ],
     },
-    { key: 'time', title: 'Light and link, hour by hour', cells: [{ key: 'heat', span: 12, node: <DayHourCard />, rest: 280 }] },
+    { key: 'time', title: 'Light and link, hour by hour', cells: [{ key: 'heat', span: 12, title: 'Day by hour', rest: 280, node: <DayHourCard /> }] },
     {
       key: 'eclipse',
       title: 'Eclipses',
       cells: [
-        { key: 'next', span: 4, node: <NextEclipseCard audience="planner" />, rest: 320 },
-        { key: 'strip', span: 8, node: <EclipseStrip audience="planner" />, rest: 320 },
+        { key: 'next', span: 4, title: 'Next eclipse', rest: 320, node: <NextEclipseCard audience="planner" /> },
+        { key: 'strip', span: 8, title: 'Eclipses from this site', rest: 320, node: <EclipseStrip audience="planner" /> },
       ],
     },
     {
       key: 'data',
       title: 'Events and data',
       cells: [
-        { key: 'events', span: 6, node: <EventsCard />, rest: 320 },
-        { key: 'data', span: 6, node: <DataPanel />, rest: 320 },
+        { key: 'events', span: 6, title: 'Events', rest: 320, node: <EventsCard /> },
+        { key: 'data', span: 6, title: 'Data and caveats', rest: 320, node: <DataPanel /> },
       ],
     },
   ]
@@ -111,10 +120,12 @@ export function SiteScreen() {
   const audience = useStore((s) => s.audience)
   const A = useStore((s) => s.scenarios.A)
   const offset = useStore((s) => s.cursorOffsetMs)
-  const { terrain, evaluation, phase, progress, error } = A.run
+  const { terrain, evaluation, phase, error } = A.run
   const busy = phase === 'idle' || phase === 'terrain' || phase === 'ephemeris'
-  const waiting = busy
-  const p = overall(phase, progress)
+  // Results from before the inputs changed stay on screen, dimmed, until the new ones arrive.
+  const dim = !!evaluation && (busy || A.run.stale)
+  const ready = !!evaluation
+  const sections = sectionsFor(audience)
   const name = A.input.siteName ?? CUSTOM_SITE_NAME
   const [orbitsOpen, setOrbitsOpen] = useState(false)
   const [full, setFull] = useState(false)
@@ -167,15 +178,21 @@ export function SiteScreen() {
       <div className="site-grid">
         <div ref={horizon} className={`site-horizon span-8${full ? ' is-full' : ''}${orbitsOpen ? ' has-orbits' : ''}`}>
           <SpaceWindow className="site-window" aria-label="View from the site">
-            {phase === 'error' && !evaluation ? (
+            {phase === 'error' ? (
               <div className="site-loading"><Notice tone="danger"><strong>We could not calculate this scenario.</strong> {error}{' '}<Button size="s" variant="inverse" onClick={() => void runScenario('A')}>Try again</Button></Notice></div>
             ) : (
-              <Building busy={busy || !evaluation} progress={p} phase={A.run.message ?? phaseText(phase)} tone="dark" className="site-building">
-                {terrain && evaluation && <HorizonScene profile={terrain.profile} evaluation={evaluation} cursorMs={cursorMs} audience={audience} />}
-              </Building>
+              <>
+                {/* The hills draw as soon as the terrain is known; the Sun and Earth join when the evaluation arrives. */}
+                {terrain && (
+                  <div className={`site-building${dim ? ' is-dim' : ''}`} aria-busy={!ready}>
+                    <HorizonScene profile={terrain.profile} evaluation={evaluation} cursorMs={cursorMs} audience={audience} />
+                  </div>
+                )}
+                <RunSteps step={stepOf(A.run)} startedAt={A.run.startedAt} message={A.run.message || phaseText(phase)} belowControls={ready} />
+              </>
             )}
             {!orbitsOpen && evaluation && (
-              <button type="button" className="orbit-mini" onClick={() => setOrbitsOpen(true)} aria-label="Open the view of the Sun, Earth and Moon from outside">
+              <button type="button" className={`orbit-mini ui-reveal${dim ? ' is-dim' : ''}`} style={{ '--i': 1 } as CSSProperties} onClick={() => setOrbitsOpen(true)} aria-label="Open the view of the Sun, Earth and Moon from outside">
                 <OrbitView cursorMs={cursorMs} audience={audience} compact />
                 <span className="orbit-mini-label">
                   <Orbit size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -199,29 +216,29 @@ export function SiteScreen() {
         </div>
 
         <aside className="site-now span-4" aria-label="Right now">
-          <Building busy={waiting} progress={p} phase={!evaluation ? phaseText(phase) : undefined} minHeight={440} className="fill">
-            {evaluation && <NowPanel audience={audience} />}
-          </Building>
+          <Pending ready={ready} title={audience === 'planner' ? 'Now' : 'Right now'} minHeight={440} index={1} dim={dim} className="fill">
+            <NowPanel audience={audience} />
+          </Pending>
         </aside>
 
         <div className="span-12">
-          <Building busy={busy} progress={p}>
+          <Pending ready={ready} title="Time" minHeight={224} index={2} dim={dim}>
             <Timeline audience={audience} />
-          </Building>
+          </Pending>
         </div>
       </div>
 
-      {sectionsFor(audience).map((section) => (
+      {sections.map((section, si) => (
         <section key={section.key} className="site-section" aria-labelledby={`sec-${section.key}`}>
           <h2 className="ui-title is-m" id={`sec-${section.key}`}>
             {section.title}
           </h2>
           <div className="site-grid">
-            {section.cells.map((c) => (
+            {section.cells.map((c, ci) => (
               <div key={c.key} className={`span-${c.span}`}>
-                <Building busy={waiting} progress={p} minHeight={c.rest} className="fill">
-                  {evaluation && c.node}
-                </Building>
+                <Pending ready={ready} title={c.title} minHeight={c.rest} index={3 + sections.slice(0, si).reduce((n, x) => n + x.cells.length, 0) + ci} dim={dim} className="fill">
+                  {c.node}
+                </Pending>
               </div>
             ))}
           </div>

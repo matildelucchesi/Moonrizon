@@ -10,8 +10,8 @@ await page.getByLabel('Part of the Moon in view').getByRole('button', { name: 'S
 await page.waitForTimeout(3000)
 await page.getByRole('button', { name: /^Compare sites for/ }).click()
 await page.waitForTimeout(8000)
-for (let i = 0; i < 40 && !(await page.locator('button.rank-card', { hasText: 'Peak Near Shackleton' }).count()); i++) await page.waitForTimeout(2000)
-await page.locator('button.rank-card', { hasText: 'Peak Near Shackleton' }).first().click()
+for (let i = 0; i < 40 && !(await page.locator('button.rank-row', { hasText: 'Peak Near Shackleton' }).count()); i++) await page.waitForTimeout(2000)
+await page.locator('button.rank-row', { hasText: 'Peak Near Shackleton' }).first().click()
 await page.waitForTimeout(1500)
 await page.getByRole('button', { name: /Open the horizon/ }).click()
 for (let i = 0; i < 60; i++) { if (await page.getByText(/Day 1 of/).count()) break; await page.waitForTimeout(2000) }

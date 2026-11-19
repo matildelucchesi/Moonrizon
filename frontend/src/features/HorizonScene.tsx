@@ -17,6 +17,7 @@ import { angularSeparation, azDelta, EARTH_DIAMETER_DEG, earthLitFraction, SUN_D
 import { useElementSize } from '../hooks'
 import type { Audience } from '../state/store'
 import { phasePath, Segmented, Toggle } from '../ui'
+import './loading.css'
 
 type Look = 'sun' | 'earth' | 'both' | 'free'
 type Lens = 'eye' | 'wide' | 'panorama'
@@ -28,7 +29,12 @@ const DEG = Math.PI / 180
 
 interface Props {
   profile: HorizonProfile
-  evaluation: ScenarioEvaluation
+  /**
+   * Absent while only the terrain is known: the hills draw from the profile,
+   * with the same projection, and the Sun, Earth and controls join when the
+   * evaluation arrives.
+   */
+  evaluation?: ScenarioEvaluation
   cursorMs: number
   audience: Audience
 }
@@ -91,8 +97,8 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
   const [showPaths, setShowPaths] = useState(true)
   const drag = useRef<{ x: number; az: number } | null>(null)
 
-  const sun = bodyAt(evaluation, evaluation.sun, evaluation.intervals.sun, cursorMs)
-  const earth = bodyAt(evaluation, evaluation.earth, evaluation.intervals.earth, cursorMs)
+  const sun = evaluation ? bodyAt(evaluation, evaluation.sun, evaluation.intervals.sun, cursorMs) : null
+  const earth = evaluation ? bodyAt(evaluation, evaluation.earth, evaluation.intervals.earth, cursorMs) : null
 
   const seed = Math.round(profile.observer.site.latDeg * 1000) * 7919 + Math.round(profile.observer.site.lonEastDeg * 1000)
   const relief = useMemo(() => [makeRelief(seed), makeRelief(seed + 17)], [seed])
@@ -102,16 +108,19 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
   const w = size.width
   const h = size.height
   const panorama = lens === 'panorama'
-  const sepAz = Math.abs(azDelta(earth.azimuthDeg, sun.azimuthDeg))
   let fov = LENS_FOV[lens]
+  // Without the Sun and Earth yet, face the way the panorama starts.
+  const restingAz = profile.observer.site.latDeg < 0 ? 0 : 180
   let centerAz: number
   if (panorama) {
-    centerAz = look === 'free' ? freeAz : profile.observer.site.latDeg < 0 ? 0 : 180
-  } else if (look === 'sun') centerAz = sun.azimuthDeg
-  else if (look === 'earth') centerAz = earth.azimuthDeg
+    centerAz = look === 'free' ? freeAz : restingAz
+  } else if (look === 'sun') centerAz = sun ? sun.azimuthDeg : restingAz
+  else if (look === 'earth') centerAz = earth ? earth.azimuthDeg : restingAz
   else if (look === 'both') {
-    centerAz = sun.azimuthDeg + azDelta(earth.azimuthDeg, sun.azimuthDeg) / 2
-    fov = Math.min(170, Math.max(fov, sepAz + 36))
+    if (sun && earth) {
+      centerAz = sun.azimuthDeg + azDelta(earth.azimuthDeg, sun.azimuthDeg) / 2
+      fov = Math.min(170, Math.max(fov, Math.abs(azDelta(earth.azimuthDeg, sun.azimuthDeg)) + 36))
+    } else centerAz = restingAz
   } else centerAz = freeAz
 
   const pxX = w / fov
@@ -127,7 +136,7 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
   })()
   const spanEl = h / pxY
   let elTop = hRef + spanEl * (panorama ? 0.72 : 0.62)
-  const followed = look === 'sun' ? [sun] : look === 'earth' ? [earth] : look === 'both' ? [sun, earth] : []
+  const followed = (look === 'sun' ? [sun] : look === 'earth' ? [earth] : look === 'both' ? [sun, earth] : []).filter((b) => b !== null)
   for (const b of followed) {
     if (b.elevationDeg > elTop - spanEl * 0.12) elTop = b.elevationDeg + spanEl * 0.2
   }
@@ -172,7 +181,7 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
 
   // ------------------------------------------------------------ paths over the period
   const paths = useMemo(() => {
-    if (!showPaths || w <= 0) return null
+    if (!evaluation || !showPaths || w <= 0) return null
     const build = (track: ScenarioEvaluation['sun']) => {
       const segs: string[] = []
       let cur: string[] = []
@@ -214,6 +223,23 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
     const step = (e.shiftKey ? 30 : 5) * (e.key === 'ArrowLeft' ? -1 : 1)
     setLook('free')
     setFreeAz((((centerAz + step) % 360) + 360) % 360)
+  }
+
+  // ------------------------------------------------------------ terrain only
+  // Only the terrain exists so far: its far ridge is the engine's own horizon.
+  // The outline draws once, then the rock fades in. Nothing else is drawn.
+  if (!evaluation || !sun || !earth) {
+    return (
+      <div className="scene" ref={ref}>
+        {w > 0 && h > 0 && terrain && (
+          <svg width={w} height={h} style={{ display: 'block' }} aria-hidden="true">
+            <rect width={w} height={h} fill="var(--space)" />
+            <path d={terrain.farArea} className="scene-draw-rock" />
+            <path d={terrain.farLine} pathLength={1} className="scene-draw-line" />
+          </svg>
+        )}
+      </div>
+    )
   }
 
   // ------------------------------------------------------------ derived drawing values
@@ -288,7 +314,7 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
 
           <rect width={w} height={h} fill="var(--space)" />
 
-          <g aria-hidden="true">
+          <g aria-hidden="true" className="scene-arrive">
             {stars.map((s, i) => {
               const px = view.x(s.az)
               const py = view.y(s.el)
@@ -298,7 +324,7 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
           </g>
 
           {grid && (
-            <g className="scene-grid" aria-hidden="true">
+            <g className="scene-grid scene-arrive" aria-hidden="true">
               {yTicks.map((v) => (
                 <g key={v}>
                   <line x1={0} x2={w} y1={view.y(v)} y2={view.y(v)} className={v === 0 ? 'is-zero' : undefined} />
@@ -313,14 +339,14 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
           )}
 
           {paths && (
-            <g aria-hidden="true">
+            <g aria-hidden="true" className="scene-arrive">
               <path d={paths.earth} className="scene-path is-earth" />
               <path d={paths.sun} className="scene-path is-sun" />
             </g>
           )}
 
           {/* Bodies before terrain, so the terrain hides them for real. */}
-          <g aria-hidden="true">
+          <g aria-hidden="true" className="scene-arrive">
             <circle cx={sx} cy={sy} r={sunR} fill="var(--sun)" opacity={1 - eclipse * 0.85} />
             <g>
               <circle cx={ex} cy={ey} r={earthR} fill="var(--earth-night)" />
@@ -334,12 +360,12 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
           <g aria-hidden="true">
             <path d={terrain.farArea} fill="var(--rock-far-top)" />
             <path d={terrain.farLine} fill="none" stroke="var(--space-ink-2)" strokeOpacity={0.7} strokeWidth={1} strokeLinejoin="round" />
-            <path d={terrain.midArea} fill="var(--rock-mid-top)" />
-            <path d={terrain.nearArea} fill="var(--rock-near-top)" />
+            <path d={terrain.midArea} fill="var(--rock-mid-top)" className="scene-arrive" />
+            <path d={terrain.nearArea} fill="var(--rock-near-top)" className="scene-arrive" />
           </g>
 
           {audience === 'planner' && (
-            <g aria-hidden="true">
+            <g aria-hidden="true" className="scene-arrive">
               <path d={terrain.farLine} fill="none" stroke="var(--space-ink)" strokeWidth={1} strokeDasharray="4 4" />
               <text x={w - 14} y={Math.max(18, view.y(horizonAt(profile, centerAz + (w / 2 - 14) / pxX)) - 10)} textAnchor="end" className="scene-mono">
                 Terrain horizon H(az)
@@ -351,7 +377,7 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
             <BodyMark key={m.spec.body} {...m} audience={audience} eclipse={eclipse} />
           ))}
 
-          <g className="scene-compass" aria-hidden="true">
+          <g className="scene-compass scene-arrive" aria-hidden="true">
             {azTicks.map((a) => {
               const px = view.x(a)
               const norm = ((a % 360) + 360) % 360
@@ -373,7 +399,7 @@ export function HorizonScene({ profile, evaluation, cursorMs, audience }: Props)
         </svg>
       )}
 
-      <div className="scene-controls">
+      <div className="scene-controls ui-reveal">
         <Segmented<Look>
           label="Look at"
           tone="on-dark"

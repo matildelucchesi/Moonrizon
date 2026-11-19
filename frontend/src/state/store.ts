@@ -54,7 +54,16 @@ export interface RegionRanking {
   current: string[]
   /** Current engine stage, including the early sunlight screen. */
   message?: string | null
+  /** When this run started (ms since epoch), for the time estimate. */
+  startedAt: number
+  /** Estimated ms left, recomputed each time a site finishes; null until enough sites are processed. */
+  etaMs: number | null
+  /** What each site being measured is doing now, by location id. Removed when the site finishes. */
+  stages: Record<string, RankingStage>
 }
+
+/** The two jobs behind one site of the ranking: its terrain, then its Sun and Earth evaluation. */
+export type RankingStage = 'terrain' | 'visibility'
 
 export interface ScenarioInput {
   site: SiteCoordinates
@@ -79,6 +88,10 @@ export interface ScenarioRun {
   stale: boolean
   error?: string
   message?: string
+  /** When this calculation started (ms since epoch), for the clock beside the steps. */
+  startedAt?: number
+  /** The period before runs after the results are shown. 'failed' ends the step without a comparison. */
+  previousState?: 'pending' | 'done' | 'failed'
 }
 
 export interface Scenario {
@@ -307,7 +320,12 @@ export function updateScenario(key: ScenarioKey, fn: (s: Scenario) => Scenario):
 
 export function setScenarioInput(key: ScenarioKey, patch: Partial<ScenarioInput>): void {
   if (patch.site && !('selectionId' in patch)) patch = { ...patch, selectionId: null }
-  updateScenario(key, (s) => ({ input: { ...s.input, ...patch }, run: { phase: 'idle', stale: true } }))
+  updateScenario(key, (s) => {
+    // Same place: keep the results on screen (marked stale) until the new ones arrive.
+    const same = !patch.site || (patch.site.latDeg === s.input.site.latDeg && patch.site.lonEastDeg === s.input.site.lonEastDeg)
+    const { terrain, evaluation, previous } = s.run
+    return { input: { ...s.input, ...patch }, run: same ? { phase: 'idle', stale: true, terrain, evaluation, previous } : { phase: 'idle', stale: true } }
+  })
   if (key === 'A' && patch.site) setState({ pointShown: true })
 }
 

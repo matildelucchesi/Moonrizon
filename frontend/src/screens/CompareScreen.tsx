@@ -26,21 +26,14 @@ import {
   type Audience,
   type CompareSite,
   type CompareView,
-  type RunPhase,
   type ScenarioRun,
   type SiteSummary,
 } from '../state/store'
-import { BackLink, Building, Button, Chip, Delta, IconButton, Notice, PauseIcon, PlayIcon, Segmented, Select, SpaceWindow, TrackBar } from '../ui'
+import { BackLink, Button, Chip, Delta, IconButton, Notice, Pending, PauseIcon, PlayIcon, Segmented, Select, SpaceWindow, TrackBar } from '../ui'
 import '../features/compare.css'
 
 const ICON = { size: 18, strokeWidth: 1.75, 'aria-hidden': true } as const
 const SPEEDS = [6, 12, 24, 72]
-
-function overall(phase: RunPhase, progress = 0): number {
-  if (phase === 'terrain') return progress * 0.6
-  if (phase === 'ephemeris') return 0.6 + progress * 0.4
-  return 1
-}
 
 function shortName(name: string): string {
   return name.split(' · ')[0]
@@ -270,18 +263,17 @@ function ComparePanel({ letter, entry, run, cursorMs, audience, view, scale, fac
               </Notice>
             </div>
           ) : (
-            <Building
-              busy={busy}
-              progress={overall(phase, run?.progress)}
-              phase={run?.message ?? (phase === 'ephemeris' ? 'Tracking the Sun and Earth…' : 'Tracing the hills around the site…')}
+            <Pending
+              ready={!busy}
+              bare
               tone="dark"
-              minHeight={0}
+              note={run?.message || (phase === 'ephemeris' ? 'Tracking the Sun and Earth…' : 'Tracing the hills around the site…')}
               className="hc-building"
             >
               {terrain && evaluation && (
                 <CompareWindow profile={flat ? flatProfile(terrain.profile) : terrain.profile} evaluation={evaluation} cursorMs={cursorMs} audience={audience} view={view} scale={scale} facingAz={facingAz} trails={trails} />
               )}
-            </Building>
+            </Pending>
           )}
           <div className="hc-tag" title={entry.name}>
             <span className="hc-badge">{letter}</span>

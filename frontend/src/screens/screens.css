@@ -206,19 +206,32 @@
     top: calc(var(--s-5) + 112px);
   }
 
-  /* Placeholders for sites still being measured, readable on the dark sky. */
-  .moon-page.is-results .rank-card.is-pending {
-    border-color: rgb(217 238 252 / 0.35);
-    background: rgb(18 20 30 / 0.7);
-    color: #d9eefc;
+  /* The ranking floats over the dark Moon here: its zone labels, column labels
+     and queue text change to the light ink tokens. White rows and cards stay white. */
+  .moon-page.is-results .rank-panel {
+    --rank-ink: var(--space-ink);
+    --rank-ink-2: var(--space-ink-2);
+    --rank-ground: var(--space);
+    --rank-sun: var(--sun);
+    --rank-earth: var(--earth-sky);
   }
 
-  .moon-page.is-results .rank-card.is-pending .ui-muted {
-    color: #d9eefc;
+  /* The lit Moon is mid grey: the rail gets its own dark sheet so labels and queue stay readable. */
+  .moon-page.is-results .rank-board {
+    padding: var(--s-1) var(--s-3) var(--s-3) var(--s-1);
+    border-radius: var(--r-card);
+    background: var(--space);
   }
 }
 
 .rank-panel {
+  /* Ink for what sits straight on the page: light ground by default, dark Moon in the wide results. */
+  --rank-ink: var(--ink);
+  --rank-ink-2: var(--ink-2);
+  --rank-rail: var(--ink-3);
+  --rank-ground: var(--ground);
+  --rank-sun: var(--sun-ink);
+  --rank-earth: var(--earth-ink);
   flex: 1;
   min-height: 0;
   display: flex;
@@ -231,47 +244,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-}
-
-.rank-progress {
-  margin: 0;
-  display: grid;
-  gap: 6px;
-  color: var(--ink-2);
-}
-
-.rank-progress-bar {
-  display: block;
-  height: 6px;
-  border-radius: var(--r-pill);
-  background: var(--card-sunk);
-  overflow: hidden;
-}
-
-.rank-progress-bar span {
-  display: block;
-  height: 100%;
-  border-radius: var(--r-pill);
-  background: var(--primary);
-  transition: width var(--t-base) var(--ease);
-}
-
-.rank-list {
-  flex: 1;
-  min-height: 0;
-  /* Scrolls, without showing a scrollbar. */
-  scrollbar-width: none;
-  margin: 0;
-  padding: 2px var(--s-1) 2px 2px;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  overflow-y: auto;
-}
-
-.rank-list::-webkit-scrollbar {
-  display: none;
 }
 
 .mission-settings form {
@@ -299,155 +271,255 @@
   .mission-fields { grid-template-columns: 1fr; }
 }
 
-.rank-card {
-  width: 100%;
+/* The ranking: one rail, a node per site. Evaluated = white row, measuring =
+   indigo-soft row with a pulsing dot, in queue = no card and a hollow circle. */
+.rank-board {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--card);
-  color: var(--ink);
+  gap: var(--s-1);
+}
+
+.rank-line,
+.rank-zone {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--s-1);
+  align-items: center;
+}
+
+/* The rail: 1px, joined from one node to the next. */
+.rank-line::before,
+.rank-zone::before {
+  content: '';
+  position: absolute;
+  left: 11.5px;
+  top: 0;
+  bottom: -8px;
+  width: 1px;
+  background: var(--rank-rail);
+}
+
+.rank-board > :first-child::before {
+  top: 50%;
+}
+
+.rank-board > :last-child::before {
+  bottom: 50%;
+}
+
+.rank-zone {
+  min-height: var(--s-7);
+  align-items: end;
+}
+
+/* Queued names sit close together. */
+.rank-line.is-tight {
+  margin-top: calc(-1 * var(--s-1));
+}
+
+.rank-line.is-tight::before {
+  bottom: 0;
+}
+
+.rank-board > .rank-line.is-tight:last-child::before {
+  bottom: 50%;
+}
+
+.rank-line.is-new {
+  animation: rank-arrive var(--t-slow) var(--ease);
+}
+
+@keyframes rank-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Zone header: title and count on the left, the column labels on the right. */
+.rank-cols,
+.rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 48px);
+  gap: 0 var(--s-1);
+  align-items: baseline;
+  padding: 0 var(--s-3);
+}
+
+.rank-cols {
+  font-size: var(--text-xs);
+  line-height: 24px;
+  color: var(--rank-ink-2);
+  text-align: right;
+}
+
+.rank-cols > .is-sun {
+  color: var(--rank-sun);
+}
+
+.rank-cols > .is-earth {
+  color: var(--rank-earth);
+}
+
+.rank-zone-title {
   text-align: left;
-  font: inherit;
-  font-size: var(--text-s);
-  cursor: pointer;
+  font: 600 var(--text-s) / 24px var(--font-text);
+  color: var(--rank-ink);
 }
 
-.rank-card:hover {
-  border-color: var(--ink-3);
+.rank-zone-title > span {
+  margin-left: var(--s-1);
+  font: 400 var(--text-s) / 24px var(--font-data);
+  color: var(--rank-ink-2);
 }
 
-.rank-card[aria-pressed='true'] {
-  border-color: var(--primary);
-}
-
-.rank-card:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.rank-card.is-pending {
-  flex-direction: row;
-  align-items: center;
-  border-style: dashed;
-  background: transparent;
-  cursor: default;
-}
-
-.rank-card.is-pending .rank-badge {
-  background: var(--card-sunk);
-}
-
-.rank-card-head {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  min-width: 0;
-}
-
-.rank-badge {
-  flex: none;
-  width: 28px;
-  height: 28px;
+/* The node says the state before any text does. */
+.rank-node {
+  position: relative;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--card-sunk);
-  color: var(--ink-2);
-  font: 800 14px var(--font-text);
 }
 
-.rank-card-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font: 700 var(--text-m) / 1.2 var(--font-display);
+.rank-node.is-done {
+  background: var(--card);
+  color: var(--ink);
+  font: 600 var(--text-xs) / 1 var(--font-data);
 }
 
-.rank-card[aria-pressed='true'] .rank-badge {
+.rank-node.is-done.is-on {
   background: var(--primary);
   color: var(--on-primary);
 }
 
-.rank-card .results-metrics {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-3);
-  padding-block: var(--s-2);
+.rank-node.is-run {
+  background: var(--primary-soft);
 }
 
-.rank-card .ui-metric-value {
-  font-size: var(--display-m);
+.rank-node.is-queue {
+  width: 12px;
+  height: 12px;
+  margin: 0 6px;
+  background: var(--rank-ground);
 }
 
-.rank-card .ui-metric-label {
-  font-size: var(--text-xs);
+.rank-hollow {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--rank-ink-2);
+  border-radius: 50%;
 }
 
-.rank-item {
-  position: relative;
-}
-
-.rank-item .rank-card-head {
-  padding-right: var(--s-7);
-}
-
-.rank-site-info {
-  position: absolute;
-  top: var(--s-3);
-  right: var(--s-3);
-}
-
-.rank-site-info summary {
-  display: grid;
-  place-items: center;
-  width: var(--target-s);
-  height: var(--target-s);
-  border-radius: var(--r-pill);
-  color: var(--ink-2);
+/* Evaluated: a compact white row, name then Sun, Earth, Both. */
+.rank-row {
+  width: 100%;
+  min-width: 0;
+  padding-block: 7px;
+  border: 1px solid var(--card);
+  border-radius: var(--r-small);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
   cursor: pointer;
-  list-style: none;
 }
 
-.rank-site-info summary::-webkit-details-marker {
-  display: none;
+.rank-row:hover {
+  border-color: var(--ink-3);
 }
 
-.rank-site-info summary:hover,
-.rank-site-info[open] summary {
-  background: var(--card-sunk);
-  color: var(--primary);
+.rank-row.is-on {
+  border-color: var(--primary);
 }
 
-.rank-site-info summary:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+.rank-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
-.rank-site-info-body {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 2;
-  width: min(340px, calc(100vw - 96px));
-  max-height: 50dvh;
-  overflow-y: auto;
-  border: 1px solid var(--line);
+.rank-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: 700 var(--text-m) / 24px var(--font-display);
 }
 
-.rank-card-head .results-tag {
-  margin-left: auto;
+.rank-n {
+  position: relative;
+  text-align: right;
+  font: 600 var(--text-m) / 24px var(--font-data);
+  font-variant-numeric: tabular-nums;
 }
 
-.rank-card-score {
-  flex: none;
-  margin-left: auto;
-  font-weight: 600;
+.rank-n.is-zero {
+  color: var(--ink-3);
+}
+
+/* The selected row opens in place: secondary numbers, then notes, full width. */
+.rank-more,
+.rank-note {
+  grid-column: 1 / -1;
+  font-size: var(--text-xs);
+  line-height: 24px;
   color: var(--ink-2);
 }
 
-.rank-card-head .results-tag + .rank-card-score {
-  margin-left: 0;
+.rank-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--s-3);
+  margin-top: var(--s-1);
+}
+
+.rank-more b {
+  font: 600 var(--text-xs) / 24px var(--font-data);
+  color: var(--ink);
+}
+
+/* Measuring: the name, and the step the site is at. */
+.rank-run {
+  min-height: var(--target-s);
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-small);
+  background: var(--primary-soft);
+}
+
+.rank-run-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: 600 var(--text-s) var(--font-text);
+  color: var(--primary-press);
+}
+
+.rank-run-step {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+/* In queue: no card, muted text. */
+.rank-wait {
+  padding: 0 var(--s-3);
+  font-size: var(--text-s);
+  line-height: 24px;
+  color: var(--rank-ink-2);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rank-line.is-new {
+    animation: none;
+  }
 }
 
 .rank-go {
@@ -1260,13 +1332,14 @@
   padding-top: var(--s-6);
 }
 
-.ui-building.fill,
-.ui-building.fill > .ui-building-content {
+.ui-pending.fill,
+.ui-pending.fill > .ui-pending-content,
+.ui-pending.fill > .ui-pending-wait {
   height: 100%;
 }
 
-.ui-building.fill > .ui-building-content > .ui-card,
-.ui-building.fill > .ui-building-content > .panel-card {
+.ui-pending.fill > .ui-pending-content > .ui-card,
+.ui-pending.fill > .ui-pending-content > .panel-card {
   height: 100%;
 }
 

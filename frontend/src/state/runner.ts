@@ -5,9 +5,10 @@ import type { ScenarioEvaluation, SiteCoordinates } from '../api/types'
 import { loadRegions, rank, type Region } from '../domain/ranking'
 import { regionCatalog, siteCatalog } from '../domain/catalogs'
 import { terrainIssue, scenarioIssue } from '../domain/comparison'
+import { rankingEtaMs } from '../domain/rankingEta'
 import { rankingRequest } from '../domain/rankingRequest'
 import { intervalStats } from '../domain/sampling'
-import { getState, setState, updateScenario, type ScenarioKey, type SiteSummary } from './store'
+import { getState, setState, updateScenario, type RankingStage, type ScenarioKey, type SiteSummary } from './store'
 
 const controllers: Partial<Record<ScenarioKey, AbortController>> = {}
 
@@ -38,7 +39,9 @@ export async function runScenario(key: ScenarioKey): Promise<void> {
   }
 
   try {
-    updateScenario(key, (sc) => ({ ...sc, run: { phase: 'terrain', progress: 0, stale: true } }))
+    // Results from the same place stay (stale) while the new ones are calculated.
+    const startedAt = Date.now()
+    updateScenario(key, (sc) => ({ ...sc, run: { phase: 'terrain', progress: 0, stale: true, startedAt, terrain: sc.run.terrain, evaluation: sc.run.evaluation, previous: sc.run.previous } }))
     const terrain = await runJob(
       () =>
         provider.submitTerrainAnalysis(
@@ -56,7 +59,10 @@ export async function runScenario(key: ScenarioKey): Promise<void> {
       signal,
     )
     if (!current()) return
-    updateScenario(key, (sc) => ({ ...sc, run: { phase: 'ephemeris', terrain, progress: 0, stale: false } }))
+    updateScenario(key, (sc) => ({
+      ...sc,
+      run: { phase: 'ephemeris', terrain, progress: 0, stale: !!sc.run.evaluation, startedAt, evaluation: sc.run.evaluation, previous: sc.run.previous },
+    }))
 
     const evaluation = await runJob(
       () =>
@@ -79,7 +85,7 @@ export async function runScenario(key: ScenarioKey): Promise<void> {
     // Inputs may have changed after submission (a rerun is then pending).
     updateScenario(key, (sc) => ({
       ...sc,
-      run: { phase: 'ready', terrain, evaluation, stale: sc.input !== input || getState().durationDays !== s.durationDays },
+      run: { phase: 'ready', terrain, evaluation, stale: sc.input !== input || getState().durationDays !== s.durationDays, startedAt, previousState: 'pending' },
     }))
 
     // The period before, for the comparison next to every number. Not blocking.
@@ -99,8 +105,9 @@ export async function runScenario(key: ScenarioKey): Promise<void> {
       () => undefined,
       signal,
     ).catch(() => undefined)
-    if (!current() || !previous) return
-    updateScenario(key, (sc) => (sc.run.evaluation === evaluation ? { ...sc, run: { ...sc.run, previous } } : sc))
+    if (!current()) return
+    // Done or failed, the step ends: a failed comparison just leaves the numbers without a change beside them.
+    updateScenario(key, (sc) => (sc.run.evaluation === evaluation ? { ...sc, run: { ...sc.run, previous, previousState: previous ? 'done' : 'failed' } } : sc))
   } catch (err) {
     if (!current()) return
     updateScenario(key, (sc) => ({ ...sc, run: { ...sc.run, phase: 'error', error: describe(err) } }))
@@ -195,7 +202,7 @@ export async function runRegionRanking(force = false): Promise<void> {
   const { locations, minSunFraction, key } = rankingRequest(s)
   if (!locations.length) {
     rankingController?.abort()
-    setState({ ranking: { key, busy: false, total: 0, regions: [], failed: [], skipped: [], current: [] } })
+    setState({ ranking: { key, busy: false, total: 0, regions: [], failed: [], skipped: [], current: [], startedAt: Date.now(), etaMs: null, stages: {} } })
     return
   }
   const A = s.scenarios.A.input
@@ -211,7 +218,7 @@ export async function runRegionRanking(force = false): Promise<void> {
     const now = getState().ranking
     if (!signal.aborted && now?.key === key) setState({ ranking: { ...now, ...patch } })
   }
-  setState({ ranking: { key, busy: true, total: locations.length, regions: [], failed: [], skipped: [], current: [] } })
+  setState({ ranking: { key, busy: true, total: locations.length, regions: [], failed: [], skipped: [], current: [], startedAt: Date.now(), etaMs: null, stages: {} } })
 
   // Results arrive out of order: keep every list in catalog order.
   const order = new Map(locations.map((loc, i) => [loc.id, i]))
@@ -221,9 +228,17 @@ export async function runRegionRanking(force = false): Promise<void> {
     const now = getState().ranking?.current ?? []
     update({ current: on ? [...now, name] : now.filter((n) => n !== name) })
   }
+  // What each running site is doing, by id; a finished site leaves the map.
+  const stage = (id: string, value: RankingStage | null) => {
+    const stages = { ...getState().ranking?.stages }
+    if (value) stages[id] = value
+    else delete stages[id]
+    update({ stages })
+  }
 
   const measure = async (loc: (typeof locations)[number]): Promise<void> => {
     try {
+      stage(loc.id, 'terrain')
       const terrain = await runJob(
         () => provider.submitTerrainAnalysis({ priority: 'background', site: loc.center, observerHeightM: A.observerHeightM, includeLocalTerrain: true, config: { azimuthStepDeg: s.azimuthStepDeg, maxDistanceKm: s.maxDistanceKm } }, signal),
         (id) => provider.getTerrainAnalysis(id, signal),
@@ -232,6 +247,7 @@ export async function runRegionRanking(force = false): Promise<void> {
       )
       const terrainProblem = terrainIssue(terrain)
       if (terrainProblem) throw new Error(terrainProblem)
+      stage(loc.id, 'visibility')
       const evaluation = await runJob(
         () => catalogApi.submitRankingEvaluation({ terrainAnalysisId: terrain.id, startUtc: new Date(start).toISOString(), stopUtc: new Date(stop).toISOString(), stepMinutes: s.stepMinutes, minSunFraction }, signal),
         (id) => catalogApi.getRankingEvaluation(id, signal),
@@ -285,12 +301,16 @@ export async function runRegionRanking(force = false): Promise<void> {
         await measure(loc)
       } finally {
         measuring(loc.name, false)
+        stage(loc.id, null)
+        // The estimate follows the pace, so it changes only when a site finishes.
+        const now = getState().ranking
+        if (now) update({ etaMs: rankingEtaMs(now.startedAt, Date.now(), now.regions.length + now.failed.length + now.skipped.length, now.total) })
       }
     }
   }
   await Promise.all(Array.from({ length: Math.min(RANKING_PARALLEL, locations.length) }, lane))
   if (signal.aborted) return
-  update({ busy: false, current: [], message: null })
+  update({ busy: false, current: [], stages: {}, etaMs: null, message: null })
 }
 
 // Catalog requests retry on their own while the backend restarts (api/retry.ts);

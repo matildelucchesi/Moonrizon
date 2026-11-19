@@ -14,7 +14,7 @@ import { formatDuration, formatUtc, formatUtcDate, previousMonthName } from '../
 import { useElementSize } from '../hooks'
 import { runComparison, summarize } from '../state/runner'
 import { durationMs, setState, useStore, type Audience, type SiteSummary } from '../state/store'
-import { Building, Button, Card, Delta, DownloadIcon, EarthIcon, EclipseIcon, Segmented, SunIcon } from '../ui'
+import { Button, Card, Delta, DownloadIcon, EarthIcon, EclipseIcon, Pending, Segmented, SunIcon } from '../ui'
 
 const DAY = 86_400_000
 const HOUR = 3_600_000
@@ -273,7 +273,8 @@ function CompareBars({ audience, own }: { audience: Audience; own: { name: strin
     prev ? <Delta value={m.unit ? m.get(now) - m.get(prev) : (m.get(now) - m.get(prev)) * 100} unit={m.unit} better={m.better} /> : null
 
   return (
-    <Building busy={!!comparison?.busy} progress={0.5} phase="Working out the other sites…">
+    // Holds about the height of the bars, so the card does not grow when they arrive.
+    <Pending ready={!comparison?.busy} bare note="Working out the other sites…" minHeight={metrics.length * 168}>
       <div className="cmp">
         {metrics.map((m) => {
           const max = Math.max(...rows.map((r) => m.get(r.now)), 1e-6)
@@ -302,7 +303,7 @@ function CompareBars({ audience, own }: { audience: Audience; own: { name: strin
         })}
         {audience === 'planner' && <p className="ui-small ui-muted">Same days for every site. Changes vs the same days in {previousMonthName(startMs)}.</p>}
       </div>
-    </Building>
+    </Pending>
   )
 }
 

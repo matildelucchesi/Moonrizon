@@ -96,11 +96,6 @@
     order: 2;
   }
 
-  .rank-list {
-    max-height: none;
-    overflow: visible;
-  }
-
   .moon-window {
     height: clamp(360px, 68dvh, 720px);
   }

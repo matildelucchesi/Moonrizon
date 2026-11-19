@@ -431,12 +431,10 @@
   display: block;
 }
 
-/* The loading label sits at the bottom, so the site name stays readable. */
-.hc-window .ui-building-phase {
-  top: auto;
-  bottom: var(--s-2);
-  left: var(--s-2);
-  font-size: 13px;
+/* The waiting note sits at the bottom, so the site name stays readable. */
+.hc-window .ui-pending-wait {
+  justify-content: flex-end;
+  padding: var(--s-2);
 }
 
 .hc-window-error {

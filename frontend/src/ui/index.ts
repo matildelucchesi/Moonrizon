@@ -22,5 +22,5 @@ export { Field, Input, Segmented, Select, SiteTile, Toggle, type SegmentOption }
 export { Card, Chip, Delta, Metric, Notice, Progress, SpaceWindow, StoryCard, TrackBar } from './Display'
 export { BothIcon, EarthIcon, EarthPhase, EclipseIcon, SunIcon } from './Bodies'
 export { phasePath } from './phase'
-export { Building } from './Building'
+export { Pending } from './Pending'
 export { DateDial, MonthCalendar } from './DateDial'

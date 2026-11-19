@@ -1,0 +1,149 @@
+/*
+ * Loading states of the site page that live in the space window: the step
+ * list, the dimmed scene while results are recalculated, and the hills that
+ * draw once the terrain is known. Opacity, stroke-dashoffset and short
+ * translations only, so it keeps moving while the 3D scene holds the main thread.
+ */
+
+/* ------------------------------------------------------------- step list */
+
+.run-steps {
+  --pulse-color: var(--space-ink);
+  position: absolute;
+  left: var(--s-4);
+  top: var(--s-4);
+  right: var(--s-4);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  color: var(--space-ink-2);
+  font-size: var(--text-s);
+  /* A status, never a barrier: the scene underneath stays usable. */
+  pointer-events: none;
+}
+
+/* The scene's own controls sit in the corner once it is drawn. */
+.run-steps.is-below {
+  top: calc(var(--s-4) + var(--target-s) + var(--s-3));
+}
+
+/* All three finished: the list leaves after a beat. When it comes back for a
+   new calculation it is simply there. */
+.run-steps.is-finished {
+  opacity: 0;
+  transition: opacity var(--t-slow) var(--ease) 400ms;
+}
+
+.run-steps-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-step {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: var(--s-5);
+}
+
+.run-step.is-now {
+  color: var(--space-ink);
+  font-weight: 600;
+}
+
+.run-step-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--s-5);
+  height: var(--s-5);
+}
+
+.run-step-hollow {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--space-ink-2);
+}
+
+.run-step-time {
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--space-ink-2);
+}
+
+.run-steps-message {
+  margin: 0;
+  min-height: var(--s-5);
+  padding-left: var(--s-7);
+  font-size: var(--text-xs);
+  line-height: var(--s-5);
+  color: var(--space-ink-2);
+}
+
+/* ---------------------------------------------- results being recalculated */
+
+.site-building,
+.orbit-mini {
+  transition: opacity var(--t-slow) var(--ease);
+}
+
+.site-building.is-dim,
+.orbit-mini.is-dim {
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------- hills from terrain */
+
+/* The terrain is known before the Sun and Earth are: its outline draws once,
+   then the rock fades in. Same projection as the finished scene. */
+.scene-draw-line {
+  fill: none;
+  stroke: var(--space-ink-2);
+  stroke-opacity: 0.7;
+  stroke-width: 1;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  animation: scene-draw 700ms var(--ease) backwards;
+}
+
+.scene-draw-rock {
+  fill: var(--rock-far-top);
+  animation: scene-fade-in var(--t-slow) var(--ease) 600ms backwards;
+}
+
+@keyframes scene-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* What the evaluation adds to the hills (the Sun, Earth, paths, nearer relief, scale) fades in. */
+.scene-arrive {
+  animation: scene-fade-in var(--t-slow) var(--ease) backwards;
+}
+
+@keyframes scene-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-building,
+  .orbit-mini {
+    transition: none;
+  }
+
+  .scene-draw-line,
+  .scene-draw-rock,
+  .scene-arrive {
+    animation: none;
+  }
+}

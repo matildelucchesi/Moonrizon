@@ -47,11 +47,6 @@
   .moon-side.is-scroll .rank-scroll > * {
     flex: none;
   }
-
-  .moon-side.is-scroll .rank-list {
-    max-height: none;
-    overflow: visible;
-  }
 }
 
 .brief-head,
@@ -163,23 +158,112 @@
   font-weight: 600;
 }
 
-/* Planner shortlist: progress first, the notes behind an info button. */
-.rank-loader {
+/* Progress first, the notes behind an info button. */
+.ui-card.rank-loader {
   flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
+  gap: var(--s-1);
+  padding: var(--s-3);
 }
 
 .rank-loader-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: var(--s-2);
+  gap: var(--s-1);
+}
+
+.rank-loader-title {
+  font: 600 var(--text-s) var(--font-text);
+}
+
+.rank-eta {
+  font: 400 var(--text-s) var(--font-data);
+  color: var(--ink-2);
+  white-space: nowrap;
 }
 
 .rank-loader p {
   margin: 0;
+}
+
+/* One tick per site: evaluated, measuring (blinks slowly), in queue. */
+.rank-seg {
+  display: flex;
+  gap: 2px;
+}
+
+.rank-seg i,
+.rank-seg-run {
+  flex: 1;
+  min-width: 0;
+}
+
+.rank-seg i {
+  height: var(--s-1);
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.rank-seg i.is-done {
+  background: var(--ink);
+}
+
+/* The measuring ticks blink together, as one group. */
+.rank-seg-run {
+  flex-basis: 0;
+  display: flex;
+  gap: 2px;
+  animation: rank-blink 1.6s ease-in-out infinite;
+}
+
+.rank-seg-run i {
+  background: var(--primary);
+}
+
+@keyframes rank-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.rank-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  font-size: var(--text-s);
+  color: var(--ink-2);
+}
+
+.rank-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.rank-legend i {
+  width: var(--s-1);
+  height: var(--s-1);
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.rank-legend i.is-done {
+  background: var(--ink);
+}
+
+.rank-legend i.is-run {
+  background: var(--primary);
+}
+
+.rank-legend b {
+  font: 600 var(--text-s) var(--font-data);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rank-seg-run {
+    animation: none;
+  }
 }
 
 .rank-info-slot {
@@ -481,8 +565,4 @@
 /* Tighter shortlist: less space between the boxes and the cards. */
 .moon-page.is-planner .rank-panel {
   gap: var(--s-2);
-}
-
-.moon-page.is-planner .rank-list {
-  gap: var(--s-1);
 }

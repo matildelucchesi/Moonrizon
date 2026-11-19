@@ -956,60 +956,155 @@ select.ui-input {
   margin-bottom: var(--s-3);
 }
 
-/* ---------------------------------------------------------------- building */
+/* ------------------------------------------------------------------- pulse */
 
-.ui-building {
+/* "The system is working on this": one dot with a flat expanding ring (no blur).
+   Used by the ranking list and by the site loader. Colour via --pulse-color. */
+.ui-pulse {
   position: relative;
-  min-width: 0;
+  flex: none;
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pulse-color, var(--primary));
 }
 
-.ui-building.is-empty.is-light {
-  border-radius: var(--r-card);
-  background: var(--card);
-}
-
-.ui-building-content {
-  transition: opacity var(--t-base) var(--ease);
-}
-
-.ui-building-content.is-hidden {
-  opacity: 0;
-}
-
-.ui-building-overlay {
+.ui-pulse::after {
+  content: '';
   position: absolute;
   inset: 0;
-  z-index: 3;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
+  border-radius: 50%;
+  border: 2px solid var(--pulse-color, var(--primary));
+  animation: ui-pulse-ring 1.6s var(--ease) infinite;
+}
+
+@keyframes ui-pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  80%,
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-pulse::after {
+    animation: none;
+    transform: scale(2);
+    opacity: 0.35;
+  }
+}
+
+/* ---------------------------------------------------------------- pending */
+
+/* A card waiting for its data: the real title and a quiet placeholder, at the
+   height the card will have. Only opacity and a short rise ever move. */
+.ui-pending {
+  position: relative;
+  min-width: 0;
   transition: opacity var(--t-slow) var(--ease);
 }
 
-.ui-building-overlay.is-fading {
-  opacity: 0;
+/* The results on screen no longer match the inputs; they stay, dimmed. */
+.ui-pending.is-dim {
+  opacity: 0.5;
 }
 
-.ui-building-overlay canvas {
-  position: absolute;
-  inset: 0;
+.ui-pending.is-waiting {
+  display: flex;
+  flex-direction: column;
 }
 
-.ui-building-phase {
-  position: absolute;
-  left: 16px;
-  top: 16px;
-  padding: 0 8px;
-  border-radius: var(--r-small);
+.ui-pending-wait {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.ui-pending.is-card > .ui-pending-wait {
+  padding: var(--s-6);
+  border-radius: var(--r-card);
   background: var(--card);
-  color: var(--ink-2);
-  font-size: var(--text-xs);
-  line-height: 24px;
+  color: var(--ink);
 }
 
-.ui-building.is-dark .ui-building-phase {
-  background: var(--space);
+.ui-pending-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--ink-2);
+}
+
+.ui-pending-line {
+  width: 40%;
+  max-width: 240px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--line-soft);
+  animation: ui-breathe 2s ease-in-out infinite;
+}
+
+.ui-pending.is-dark {
+  --pulse-color: var(--space-ink);
+}
+
+.ui-pending.is-dark .ui-pending-note {
   color: var(--space-ink-2);
+}
+
+.ui-pending.is-dark .ui-pending-line {
+  background: var(--space-line);
+}
+
+@keyframes ui-breathe {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Content that arrives: opacity and an 8px rise, once, staggered by --i.
+   It plays when the element is created, never on a re-render. */
+.ui-pending-content,
+.ui-reveal {
+  animation: ui-reveal var(--t-slow) var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+
+@keyframes ui-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* A number that arrives late (the change from the month before) fades in. */
+.ui-delta {
+  animation: ui-fade-in var(--t-slow) var(--ease) backwards;
+}
+
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-pending {
+    transition: none;
+  }
+
+  .ui-pending-line,
+  .ui-pending-content,
+  .ui-reveal,
+  .ui-delta {
+    animation: none;
+  }
 }
 
 /* ---------------------------------------------------------------- back link */
