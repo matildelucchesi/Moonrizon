@@ -45,6 +45,8 @@ function cesiumStatic(): Plugin {
       })
     },
     closeBundle() {
+      // The landing-only build never loads the globe, so it ships without Cesium's static files.
+      if (process.env.VITE_LANDING_ONLY === 'true') return
       for (const dir of CESIUM_DIRS) {
         cpSync(join(cesiumBuild, dir), join(outDir, CESIUM_PUBLIC_PATH, dir), { recursive: true })
       }

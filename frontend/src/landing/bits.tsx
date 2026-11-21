@@ -5,6 +5,9 @@ import { seeded } from './model'
 /** Where the one action on this page goes: the app's opening screen. */
 export const APP_HREF = '#/moon'
 
+/** Landing-only build: the app is not online yet, so the action is shown but disabled. */
+const COMING_SOON = import.meta.env.VITE_LANDING_ONLY === 'true'
+
 /** Words that land one after the other, as in the promo film. */
 export function Words({ text, from = 0, accent }: { text: string; from?: number; accent?: 'sun' | 'earth' | 'primary' | 'quiet' }) {
   return (
@@ -19,6 +22,13 @@ export function Words({ text, from = 0, accent }: { text: string; from?: number;
 }
 
 export function TryButton({ size = 'big', tone = 'primary', children = 'Try Moonrizon' }: { size?: 'big' | 'small'; tone?: 'primary' | 'paper'; children?: ReactNode }) {
+  if (COMING_SOON) {
+    return (
+      <span className={`lp-try lp-try-${size} lp-try-${tone} lp-try-soon`} aria-disabled="true">
+        <span>Coming soon</span>
+      </span>
+    )
+  }
   return (
     <a className={`lp-try lp-try-${size} lp-try-${tone}`} href={APP_HREF}>
       <span>{children}</span>
