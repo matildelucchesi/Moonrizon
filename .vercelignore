@@ -1,0 +1,9 @@
+# Vercel serves only the landing page: upload just what the frontend build needs.
+/*
+!/package.json
+!/package-lock.json
+!/.nvmrc
+!/vercel.json
+!/frontend
+/frontend/node_modules
+/frontend/dist

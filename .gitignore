@@ -36,3 +36,6 @@ data/**
 
 # WAV files
 *.wav
+
+# Vercel CLI project link
+.vercel
